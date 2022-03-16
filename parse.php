@@ -56,7 +56,7 @@
 
     #Parsovani typu
     function parse_type($str, $xw, $line){
-        if(preg_match('/^(int|str|bool)$/', $str)){
+        if(preg_match('/^(int|string|bool)$/', $str)){
             $xw->startElement('arg2');
             $xw->writeAttribute('type', 'type');
             $xw->text($str);
@@ -100,6 +100,9 @@
                         error(23, $line);
                     $xw->writeAttribute('type', 'string');
                     $xw->text($string);
+                    break;
+                default:
+                    error(23, $line);
             }
             $xw->endElement();
         }
@@ -203,6 +206,7 @@ Skript nacte ze standardniho vstupu zdrojovy kod v IPPcode22, zkontroluje lexika
             case 'INT2CHAR':
             case 'STRLEN':
             case 'TYPE':
+            case 'NOT':
                 if(count($in) != 3)
                     error(23, $line);
                 start_instruction($xw, $in[0], $order);
@@ -217,10 +221,11 @@ Skript nacte ze standardniho vstupu zdrojovy kod v IPPcode22, zkontroluje lexika
             case 'DIV':
             case 'IDIV':
             case 'LT': case 'GT': case 'EQ':
-            case 'AND': case 'OR': case 'NOT':
+            case 'AND': case 'OR':
             case 'CONCAT':
             case 'GETCHAR':
             case 'SETCHAR':
+            case 'STRI2INT':
                 if(count($in) != 4)
                     error(23, $line);
                 start_instruction($xw, $in[0], $order);
