@@ -149,8 +149,64 @@ def setVarValue(var, arg):
             error(54)
         frameTF[varSplit[1]] = arg
 
+def isStackOp(instr):
+    return instr['opcode'][-1:] == 'S'
+
+def getStackTop():
+    if not stackData:
+        error(56)
+    return stackData.pop()
+
+def operation(instr):
+    symb2 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][2])
+    symb1 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][1])
+    if symb1['type'] != 'int' or symb2['type'] != 'int':
+        error(53)
+    try:
+        value = symb1['value'] + symb2['value'] if instr['opcode'] in ['ADD', 'ADDS'] else\
+                symb1['value'] - symb2['value'] if instr['opcode'] in ['SUB', 'SUBS'] else\
+                symb1['value'] * symb2['value'] if instr['opcode'] in ['MUL', 'MULS'] else\
+                symb1['value'] // symb2['value']
+    except Exception:
+        error(57)
+    
+    if isStackOp(instr):
+        stackData.append({'type': 'int', 'value': value})
+    else:
+        setVarValue(instr['args'][0], {'type': 'int', 'value': value})
+
+def compare(instr):
+    symb2 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][2])
+    symb1 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][1])
+    if symb1['type'] not in ['int', 'bool', 'string'] or symb1['type'] not in ['int', 'bool', 'string'] or symb1['type'] != symb2['type']:
+        error(53)
+    if instr['opcode'] in ['LT', 'LTS']:
+        result = {'type': 'bool', 'value': symb1['value'] < symb2['value']}
+    else:
+        result = {'type': 'bool', 'value': symb1['value'] > symb2['value']}
+    if isStackOp(instr):
+        stackData.append(result)
+    else:
+        setVarValue(instr['args'][0], result)
+
+def equal(instr):
+    symb1 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][1])
+    symb2 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][2])
+    isNil = symb1['type'] == 'nil' or symb2['type'] == 'nil'
+    if symb1['type'] not in ['int', 'bool', 'string', 'nil'] or symb1['type'] not in ['int', 'bool', 'string', 'nil'] or\
+        (symb1['type'] != symb2['type'] and not isNil):
+        error(53)
+    if isNil:
+        result = {'type': 'bool', 'value': symb1['type'] == symb2['type']}
+    else:
+        result = {'type': 'bool', 'value': symb1['value'] == symb2['value']}
+    if isStackOp(instr):
+        stackData.append(result)
+    else:
+        setVarValue(instr['args'][0], result)
+
 def main():
-    global frameTF
+    global frameTF, stackData
     args = parseArgs()
     try:
         source = open(args.source) if args.source else sys.stdin
@@ -209,68 +265,56 @@ def main():
         elif instr[i]['opcode'] == 'PUSHS':
             stackData.append(getArgValue(instr[i]['args'][0]))
         elif instr[i]['opcode'] == 'POPS':
-            try:
-                setVarValue(instr[i]['args'][0], stackData.pop())
-            except IndexError:
-                error(56)
-        elif instr[i]['opcode'] in ['ADD', 'SUB', 'MUL', 'IDIV']:
-            symb1 = getArgValue(instr[i]['args'][1])
-            symb2 = getArgValue(instr[i]['args'][2])
-            if symb1['type'] != 'int' or symb2['type'] != 'int':
-                error(53)
-            if instr[i]['opcode'] == 'IDIV' and symb2['value'] == 0:
-                error(57)
-            value = symb1['value'] + symb2['value'] if instr[i]['opcode'] == 'ADD' else\
-                    symb1['value'] - symb2['value'] if instr[i]['opcode'] == 'SUB' else\
-                    symb1['value'] * symb2['value'] if instr[i]['opcode'] == 'MUL' else\
-                    symb1['value'] // symb2['value']
-            setVarValue(instr[i]['args'][0], {'type': 'int', 'value': value})
-        elif instr[i]['opcode'] in ['LT', 'GT']:
-            symb1 = getArgValue(instr[i]['args'][1])
-            symb2 = getArgValue(instr[i]['args'][2])
-            if symb1['type'] not in ['int', 'bool', 'string'] or symb1['type'] not in ['int', 'bool', 'string'] or symb1['type'] != symb2['type']:
-                error(53)
-            if instr[i]['opcode'] == 'LT':
-                setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': symb1['value'] < symb2['value']})
-            elif instr[i]['opcode'] == 'GT':
-                setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': symb1['value'] > symb2['value']})
-        elif instr[i]['opcode'] == 'EQ':
-            symb1 = getArgValue(instr[i]['args'][1])
-            symb2 = getArgValue(instr[i]['args'][2])
-            isNil = symb1['type'] == 'nil' or symb2['type'] == 'nil'
-            if symb1['type'] not in ['int', 'bool', 'string', 'nil'] or symb1['type'] not in ['int', 'bool', 'string', 'nil'] or\
-               (symb1['type'] != symb2['type'] and not isNil):
-                error(53)
-            if isNil:
-                setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': symb1['type'] == symb2['type']})
-            else:
-                setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': symb1['value'] == symb2['value']})
-        elif instr[i]['opcode'] in ['AND', 'OR']:
-            symb1 = getArgValue(instr[i]['args'][1])
-            symb2 = getArgValue(instr[i]['args'][2])
+            setVarValue(instr[i]['args'][0], getStackTop())
+        elif instr[i]['opcode'] == 'CLEARS':
+            stackData = []
+        elif instr[i]['opcode'] in ['ADD', 'SUB', 'MUL', 'IDIV', 'ADDS', 'SUBS', 'MULS', 'IDIVS']:
+            operation(instr[i])
+        elif instr[i]['opcode'] in ['LT', 'GT', 'LTS', 'GTS']:
+            compare(instr[i])
+        elif instr[i]['opcode'] in ['EQ', 'EQS']:
+            equal(instr[i])
+        elif instr[i]['opcode'] in ['AND', 'OR', 'ANDS', 'ORS']:
+            symb2 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][2])
+            symb1 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][1])
             if symb1['type'] != 'bool' or symb2['type'] != 'bool':
                 error(53)
-            setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': symb1['value'] and symb2['value'] if instr[i]['opcode'] == 'AND' else symb1['value'] or symb2['value']})
-        elif instr[i]['opcode'] == 'NOT':
-            symb1 = getArgValue(instr[i]['args'][1])
+            result = {'type': 'bool', 'value': symb1['value'] and symb2['value'] if instr[i]['opcode'] in ['AND', 'ANDS'] else symb1['value'] or symb2['value']}
+            if isStackOp(instr[i]):
+                stackData.append(result)
+            else:
+                setVarValue(instr[i]['args'][0], result)
+        elif instr[i]['opcode'] in ['NOT', 'NOTS']:
+            symb1 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][1])
             if symb1['type'] != 'bool':
                 error(53)
-            setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': not symb1['value']})
-        elif instr[i]['opcode'] == 'INT2CHAR':
-            symb1 = getArgValue(instr[i]['args'][1])
+            if isStackOp(instr[i]):
+                stackData.append({'type': 'bool', 'value': not symb1['value']})
+            else:
+                setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': not symb1['value']})
+        elif instr[i]['opcode'] in ['INT2CHAR', 'INT2CHARS']:
+            symb1 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][1])
             if symb1['type'] != 'int':
                 error(53)
             try:
-                setVarValue(instr[i]['args'][0], {'type': 'string', 'value': chr(symb1['value'])})
+                if isStackOp(instr[i]):
+                    stackData.append({'type': 'string', 'value': chr(symb1['value'])})
+                else:
+                    setVarValue(instr[i]['args'][0], {'type': 'string', 'value': chr(symb1['value'])})
             except ValueError:
                 error(58)
-        elif instr[i]['opcode'] == 'STRI2INT':
-            symb1 = getArgValue(instr[i]['args'][1])
-            symb2 = getArgValue(instr[i]['args'][2])
+        elif instr[i]['opcode'] in ['STRI2INT', 'STRI2INTS']:
+            symb2 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][2])
+            symb1 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][1])
             if symb1['type'] != 'string' or symb2['type'] != 'int':
                 error(53)
             try:
-                setVarValue(instr[i]['args'][0], {'type': 'int', 'value': ord(symb1['value'][symb2['value']])})
+                if symb2['value'] < 0:
+                    raise IndexError
+                if isStackOp(instr[i]):
+                    stackData.append({'type': 'int', 'value': ord(symb1['value'][symb2['value']])})
+                else:
+                    setVarValue(instr[i]['args'][0], {'type': 'int', 'value': ord(symb1['value'][symb2['value']])})
             except IndexError:
                 error(58)
         elif instr[i]['opcode'] == 'READ':
@@ -284,7 +328,7 @@ def main():
                 elif symb1['value'] == 'string':
                     setVarValue(instr[i]['args'][0], {'type': 'string', 'value': read})
                 elif symb1['value'] == 'bool':
-                    setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': read == 'true'})
+                    setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': read.lower() == 'true'})
             except Exception:
                 setVarValue(instr[i]['args'][0], {'type': 'nil', 'value': 'nil'})
         elif instr[i]['opcode'] == 'WRITE':
@@ -313,6 +357,8 @@ def main():
             if symb1['type'] != 'string' or symb2['type'] != 'int':
                 error(53)
             try:
+                if symb2['value'] < 0:
+                    raise IndexError
                 setVarValue(instr[i]['args'][0], {'type': 'string', 'value': symb1['value'][symb2['value']]})
             except IndexError:
                 error(58)
@@ -323,6 +369,8 @@ def main():
             if symb0['type'] != 'string' or symb1['type'] != 'int' or symb2['type'] != 'string':
                 error(53)
             try:
+                if symb1['value'] < 0 or symb1['value'] >= len(symb0['value']):
+                    raise IndexError
                 out = symb0['value'][:symb1['value']] + symb2['value'][0] + symb0['value'][symb1['value'] + 1:]
                 setVarValue(instr[i]['args'][0], {'type': 'string', 'value': out})
             except Exception:
@@ -359,10 +407,10 @@ def main():
             except KeyError:
                 error(52)
             continue
-        elif instr[i]['opcode'] in ['JUMPIFEQ', 'JUMPIFNEQ']:
+        elif instr[i]['opcode'] in ['JUMPIFEQ', 'JUMPIFNEQ', 'JUMPIFEQS', 'JUMPIFNEQS']:
             symb0 = getArgValue(instr[i]['args'][0])
-            symb1 = getArgValue(instr[i]['args'][1])
-            symb2 = getArgValue(instr[i]['args'][2])
+            symb1 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][1])
+            symb2 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][2])
             if symb0['value'] not in labels:
                 error(52)
             isNil = symb1['type'] == 'nil' or symb2['type'] == 'nil'
@@ -372,7 +420,7 @@ def main():
                 out = symb1['type'] == symb2['type']
             else:
                 out = symb1['value'] == symb2['value']
-            if instr[i]['opcode'] == 'JUMPIFNEQ':
+            if instr[i]['opcode'] in ['JUMPIFNEQ', 'JUMPIFNEQS']:
                 out = not out
             if out:
                 i = labels[symb0['value']]
