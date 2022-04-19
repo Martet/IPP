@@ -4,6 +4,7 @@
 import sys
 import re
 import distutils.util
+from turtle import st
 import xml.etree.ElementTree as et
 import argparse
 
@@ -46,6 +47,12 @@ def parseArgs():
             exit(10)
         raise e
 
+def parseFloat(string):
+    if '0x' in string or 'p' in string:
+        return float.fromhex(string)
+    else:
+        return float(string)
+
 def parseXML(source):
     try:
         root = et.fromstring(source.read())
@@ -68,6 +75,8 @@ def parseXML(source):
 
                 if arg.attrib['type'] == 'int':
                     value = int(arg.text)
+                elif arg.attrib['type'] == 'float':
+                    value = parseFloat(arg.text)
                 elif arg.attrib['type'] == 'bool':
                     value = distutils.util.strtobool(arg.text)
                 elif arg.attrib['type'] == 'label' and instruction.attrib['opcode'] == 'LABEL':
@@ -160,25 +169,26 @@ def getStackTop():
 def operation(instr):
     symb2 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][2])
     symb1 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][1])
-    if symb1['type'] != 'int' or symb2['type'] != 'int':
+    if symb1['type'] != symb2['type'] or symb1['type'] not in ['int', 'float'] or (instr['opcode'] in ['IDIV', 'IDIVS'] and symb1['type'] != 'int') or (instr['opcode'] in ['DIV', 'DIVS'] and symb1['type'] != 'float'):
         error(53)
     try:
         value = symb1['value'] + symb2['value'] if instr['opcode'] in ['ADD', 'ADDS'] else\
                 symb1['value'] - symb2['value'] if instr['opcode'] in ['SUB', 'SUBS'] else\
                 symb1['value'] * symb2['value'] if instr['opcode'] in ['MUL', 'MULS'] else\
-                symb1['value'] // symb2['value']
+                symb1['value'] // symb2['value'] if instr['opcode'] in ['IDIV', 'IDIVS'] else\
+                symb1['value'] / symb2['value']
     except Exception:
         error(57)
     
     if isStackOp(instr):
-        stackData.append({'type': 'int', 'value': value})
+        stackData.append({'type': symb1['type'], 'value': value})
     else:
-        setVarValue(instr['args'][0], {'type': 'int', 'value': value})
+        setVarValue(instr['args'][0], {'type': symb1['type'], 'value': value})
 
 def compare(instr):
     symb2 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][2])
     symb1 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][1])
-    if symb1['type'] not in ['int', 'bool', 'string'] or symb1['type'] not in ['int', 'bool', 'string'] or symb1['type'] != symb2['type']:
+    if symb1['type'] not in ['int', 'float', 'bool', 'string'] or symb1['type'] not in ['int', 'float', 'bool', 'string'] or symb1['type'] != symb2['type']:
         error(53)
     if instr['opcode'] in ['LT', 'LTS']:
         result = {'type': 'bool', 'value': symb1['value'] < symb2['value']}
@@ -193,7 +203,7 @@ def equal(instr):
     symb1 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][1])
     symb2 = getStackTop() if isStackOp(instr) else getArgValue(instr['args'][2])
     isNil = symb1['type'] == 'nil' or symb2['type'] == 'nil'
-    if symb1['type'] not in ['int', 'bool', 'string', 'nil'] or symb1['type'] not in ['int', 'bool', 'string', 'nil'] or\
+    if symb1['type'] not in ['int', 'float', 'bool', 'string', 'nil'] or symb1['type'] not in ['int', 'float', 'bool', 'string', 'nil'] or\
         (symb1['type'] != symb2['type'] and not isNil):
         error(53)
     if isNil:
@@ -268,7 +278,7 @@ def main():
             setVarValue(instr[i]['args'][0], getStackTop())
         elif instr[i]['opcode'] == 'CLEARS':
             stackData = []
-        elif instr[i]['opcode'] in ['ADD', 'SUB', 'MUL', 'IDIV', 'ADDS', 'SUBS', 'MULS', 'IDIVS']:
+        elif instr[i]['opcode'] in ['ADD', 'SUB', 'MUL', 'DIV', 'IDIV', 'ADDS', 'SUBS', 'MULS', 'DIVS', 'IDIVS']:
             operation(instr[i])
         elif instr[i]['opcode'] in ['LT', 'GT', 'LTS', 'GTS']:
             compare(instr[i])
@@ -292,6 +302,15 @@ def main():
                 stackData.append({'type': 'bool', 'value': not symb1['value']})
             else:
                 setVarValue(instr[i]['args'][0], {'type': 'bool', 'value': not symb1['value']})
+        elif instr[i]['opcode'] in ['FLOAT2INT', 'FLOAT2INTS', 'INT2FLOAT', 'INT2FLOATS']:
+            symb1 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][1])
+            type = 'float' if instr[i]['opcode'] in ['FLOAT2INT', 'FLOAT2INTS'] else 'int'
+            if symb1['type'] != type:
+                error(53)
+            if isStackOp(instr[i]):
+                stackData.append({'type': 'int' if type == 'float' else 'float', 'value': int(symb1['value']) if type == 'float' else float(symb1['value'])})
+            else:
+                setVarValue(instr[i]['args'][0], {'type': 'int' if type == 'float' else 'float', 'value': int(symb1['value']) if type == 'float' else float(symb1['value'])})
         elif instr[i]['opcode'] in ['INT2CHAR', 'INT2CHARS']:
             symb1 = getStackTop() if isStackOp(instr[i]) else getArgValue(instr[i]['args'][1])
             if symb1['type'] != 'int':
@@ -319,12 +338,14 @@ def main():
                 error(58)
         elif instr[i]['opcode'] == 'READ':
             symb1 = getArgValue(instr[i]['args'][1])
-            if symb1['type'] != 'type' or symb1['value'] not in ['int', 'string', 'bool']:
+            if symb1['type'] != 'type' or symb1['value'] not in ['int', 'float', 'string', 'bool']:
                 error(53)
             read = inp.readline().rstrip('\n')
             try:
                 if symb1['value'] == 'int':
                     setVarValue(instr[i]['args'][0], {'type': 'int', 'value': int(read)})
+                elif symb1['value'] == 'float':
+                    setVarValue(instr[i]['args'][0], {'type': 'float', 'value': parseFloat(read)})
                 elif symb1['value'] == 'string':
                     setVarValue(instr[i]['args'][0], {'type': 'string', 'value': read})
                 elif symb1['value'] == 'bool':
@@ -337,6 +358,8 @@ def main():
                 out = ''
             elif symb1['type'] == 'bool':
                 out = 'true' if symb1['value'] else 'false'
+            elif symb1['type'] == 'float':
+                out = symb1['value'].hex()
             else:
                 out = symb1['value']
             print(out, end='')
